@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="" />
+    <link
+      rel="stylesheet"
+      as="style"
+      onload="this.rel='stylesheet'"
+      href="https://fonts.googleapis.com/css2?display=swap&family=Noto+Sans%3Awght%40400%3B500%3B700%3B900&family=Space+Grotesk%3Awght%40400%3B500%3B700"
+    />
+    <title>NetGuard - Anomaly Detection</title>
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64," />
+
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+
+    <style>
+      @keyframes fadeIn {
+        from {
+          background-color: #315e85;
+          opacity: 0;
+        }
+        to {
+          background-color: transparent;
+          opacity: 1;
+        }
+      }
+      .new-row-animation {
+        animation: fadeIn 1.5s ease-out;
+      }
+      /* Style for WAF alerts */
+      @keyframes fadeInWaf {
+        from {
+          background-color: #853131;
+          opacity: 0;
+        }
+        to {
+          background-color: transparent;
+          opacity: 1;
+        }
+      }
+      .new-waf-row-animation {
+        animation: fadeInWaf 1.5s ease-out;
+      }
+    </style>
+  </head>
+  <body class="bg-[#111922] dark" style='font-family: "Space Grotesk", "Noto Sans", sans-serif;'>
+    <div class="relative flex size-full min-h-screen flex-col overflow-x-hidden">
+      <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#243447] px-10 py-3">
+        <div class="flex items-center gap-4 text-white">
+          <div class="size-4">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M44 4H30.6666V17.3334H17.3334V30.6666H4V44H44V4Z" fill="currentColor"></path>
+            </svg>
+          </div>
+          <h1 class="text-white text-lg font-bold leading-tight tracking-[-0.015em]">NetGuard</h1>
+        </div>
+      </header>
+
+      <main class="flex flex-1 justify-center px-20 py-5">
+        <div class="flex max-w-[1280px] flex-1 flex-col">
+          <div class="flex flex-wrap justify-between gap-3 p-4">
+            <p class="text-white min-w-72 text-[32px] font-bold leading-tight tracking-light">Network Anomaly Detection</p>
+          </div>
+
+          <section class="py-5">
+            <h2 class="text-white px-4 pb-3 text-[22px] font-bold leading-tight tracking-[-0.015em]">Real-time Metrics</h2>
+            <div class="flex flex-wrap gap-4 px-4 py-6">
+              <div class="flex min-w-72 flex-1 flex-col gap-2 rounded-lg border border-[#344b65] p-6">
+                <p class="text-white text-base font-medium leading-normal">Network Throughput</p>
+                <p id="throughput-value" class="text-white truncate text-[32px] font-bold leading-tight tracking-light">0.000 Gbps</p>
+                <div class="flex gap-1"><p class="text-[#93acc8] text-base font-normal leading-normal">Live</p></div>
+              </div>
+              <div class="flex min-w-72 flex-1 flex-col gap-2 rounded-lg border border-[#344b65] p-6">
+                <p class="text-white text-base font-medium leading-normal">Latency</p>
+                <p id="latency-value" class="text-white truncate text-[32px] font-bold leading-tight tracking-light">-- ms</p>
+                <div class="flex gap-1"><p class="text-[#93acc8] text-base font-normal leading-normal">Live</p></div>
+              </div>
+              <div class="flex min-w-72 flex-1 flex-col gap-2 rounded-lg border border-[#344b65] p-6">
+                <p class="text-white text-base font-medium leading-normal">Packet Loss</p>
+                <p id="packet-loss-value" class="text-white truncate text-[32px] font-bold leading-tight tracking-light">-- %</p>
+                <div class="flex gap-1"><p class="text-[#93acc8] text-base font-normal leading-normal">Live</p></div>
+              </div>
+            </div>
+          </section>
+
+          
+          <section class="py-5">
+            <h2 class="text-white px-4 pb-3 text-[22px] font-bold leading-tight tracking-[-0.015em]">Live Traffic Analysis</h2>
+            <div class="px-4 py-3 @container">
+              <div class="flex overflow-hidden rounded-lg border border-[#344b65] bg-[#111922]">
+                <table class="w-full text-left">
+                  <thead>
+                    <tr class="bg-[#1a2532]">
+                      <th class="px-4 py-3 text-sm font-medium text-white">Timestamp</th>
+                      <th class="px-4 py-3 text-sm font-medium text-white">Source IP</th>
+                      <th class="px-4 py-3 text-sm font-medium text-white">Destination IP</th>
+                      <th class="px-4 py-3 text-sm font-medium text-white">Protocol</th>
+                      <th class="px-4 py-3 text-sm font-medium text-white">Prediction</th>
+                      <th class="px-4 py-3 text-sm font-medium text-white">Confidence</th>
+                      <th class="px-4 py-3 text-sm font-medium text-white">Severity</th>
+                      <th class="px-4 py-3 text-sm font-medium text-white">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody id="anomalies-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const socket = io();
+        const anomaliesTableBody = document.getElementById('anomalies-tbody');
+        const wafTableBody = document.getElementById('waf-tbody'); // WAF Table
+        const throughputValue = document.getElementById('throughput-value');
+        const latencyValue = document.getElementById('latency-value');
+        const packetLossValue = document.getElementById('packet-loss-value');
+
+        socket.on('connect', () => console.log('Successfully connected!'));
+        socket.on('disconnect', () => console.log('Disconnected.'));
+
+        socket.on('update_metrics', (data) => {
+          throughputValue.textContent = data.throughput;
+          latencyValue.textContent = data.latency;
+          packetLossValue.textContent = data.packet_loss;
+        });
+
+        // JAVASCRIPT FOR WAF ALERTS START
+        socket.on('web_attack_alert', (data) => {
+          const newRow = document.createElement('tr');
+          // Add a different animation and border color for WAF alerts
+          newRow.className = 'border-t border-t-[#5e2d2d] new-waf-row-animation';
+
+          newRow.innerHTML = `
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.timestamp}</td>
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.src_ip}</td>
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.dst_ip}</td>
+            <td class="px-4 py-2 text-sm font-medium text-red-400">${data.attack_type}</td>
+            <td class="px-4 py-2 text-sm text-[#93acc8] font-mono">${data.payload.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>
+          `;
+
+          wafTableBody.prepend(newRow);
+          while (wafTableBody.rows.length > 50) {
+            wafTableBody.deleteRow(wafTableBody.rows.length - 1);
+          }
+        });
+        // JAVASCRIPT FOR WAF ALERTS END
+
+        socket.on('new_alert', (data) => {
+          if (data.prediction === 'Waiting for data...') return;
+          let severity = 'Low', severityClass = 'bg-green-600', predictionClass = 'text-green-400', description = 'Normal Traffic';
+          switch (data.prediction.toLowerCase()) {
+            case 'dos':
+              severity = 'High'; severityClass = 'bg-red-600'; predictionClass = 'text-red-400'; description = 'Denial of Service (DoS) Attack'; break;
+            case 'probe':
+              severity = 'Medium'; severityClass = 'bg-orange-500'; predictionClass = 'text-orange-400'; description = 'Network Probe / Port Scan'; break;
+            case 'r2l':
+              severity = 'High'; severityClass = 'bg-red-600'; predictionClass = 'text-red-400'; description = 'Remote to Local (R2L) Attack'; break;
+            case 'u2r':
+              severity = 'High'; severityClass = 'bg-red-600'; predictionClass = 'text-red-400'; description = 'User to Root (U2R) Attack'; break;
+          }
+          const newRow = document.createElement('tr');
+          newRow.className = 'border-t border-t-[#344b65] new-row-animation';
+          newRow.innerHTML = `
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.timestamp}</td>
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.src_ip}</td>
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.dst_ip}</td>
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.protocol}</td>
+            <td class="px-4 py-2 text-sm font-medium ${predictionClass}">${data.prediction.toUpperCase()}</td>
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${data.confidence}</td>
+            <td class="px-4 py-2 text-sm">
+              <button class="flex h-8 w-24 cursor-default items-center justify-center rounded-lg px-4 text-sm font-medium text-white ${severityClass}">
+                <span class="truncate">${severity}</span>
+              </button>
+            </td>
+            <td class="px-4 py-2 text-sm text-[#93acc8]">${description}</td>`;
+          anomaliesTableBody.prepend(newRow);
+          while (anomaliesTableBody.rows.length > 100) {
+            anomaliesTableBody.deleteRow(anomaliesTableBody.rows.length - 1);
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
